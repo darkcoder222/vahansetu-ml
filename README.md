@@ -129,7 +129,7 @@ PPO-ALNS training over 40 batches shows consistent improvement:
 - Improvement rate improved from **82.8% → 86.3%**
 - Deadline violations stabilised around **0.175 per episode**
 
-![PPO-ALNS Batch Training Summary](outputs/batch_summary.png)
+![PPO-ALNS Batch Training Summary](notebooks/batch_summary.png)
 
 XGBoost price predictor achieves R² > 0.95 on the test set. Top feature importances: `distance_km` (0.39), `vehicle_type` (0.31), `fuel_efficiency` (0.10).
 

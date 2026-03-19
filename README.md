@@ -1,20 +1,36 @@
-# VahanSetu — ML Research Module
+# VahanSetu — Smart Reverse Auction Logistics Platform
 
 **A Smart Reverse Auction Logistics Platform**  
 National Institute of Technology Patna · Department of Computer Science and Engineering  
 Minor Project · March 2026
 
-> **Status:** ML/optimization core complete. Full platform (frontend, backend, auction engine) is under development.
+> **Status:** ML/optimization core complete. Full platform (frontend, backend, auction engine) is under active development.
 
 ---
 
 ## Overview
 
-VahanSetu is an intelligent logistics platform where customers post shipment requests and couriers competitively bid to fulfill them through a reverse auction mechanism. This repository contains the two machine learning components that power the platform:
+VahanSetu is an intelligent logistics platform where customers post shipment requests and transporters competitively bid to fulfill them through a reverse auction mechanism. The platform uses machine learning for route optimization and price prediction, real-time WebSocket communication for live bidding, and an escrow-based payment system for secure transactions.
 
-1. **PPO-ALNS Route Optimizer** — uses Proximal Policy Optimization (PPO) with Adaptive Large Neighborhood Search (ALNS) to solve the Pickup and Delivery Vehicle Routing Problem with Time Windows (PDVRPTW) in the Delhi NCR region.
+### Three-Service Architecture
 
-2. **XGBoost Base Price Predictor** — predicts the maximum auction starting price (base price) and each courier's breakeven price using gradient-boosted regression trees.
+```
+/client       → React frontend
+/server       → Node.js + Express backend
+/ml-service   → FastAPI + PPO-ALNS Python microservice
+```
+
+---
+
+## Platform Workflow
+
+1. **Customer** posts a shipment (pickup, delivery, time window, weight, documents)
+2. **XGBoost** predicts auction base price; customer pays 10% token deposit into escrow
+3. **NPI Algorithm** filters eligible transporters by spatial and temporal proximity
+4. **PPO-ALNS** ranks filtered transporters by minimum detour distance and time
+5. **Auction opens** — top transporters receive broadcast invitation and bid below base price
+6. **Composite scoring** evaluates bids on price, rating, performance history, and aging boost
+7. **Winner** receives optimized route; payment released in milestones via Razorpay
 
 ---
 
@@ -23,11 +39,11 @@ VahanSetu is an intelligent logistics platform where customers post shipment req
 ### PPO-ALNS for PDVRPTW
 
 Based on Wang et al. (2025), *Journal of Combinatorial Optimization* 50:35.  
-Extended from VRPTW to PDVRPTW — a harder variant where each order has both a pickup and a delivery location, pickup must precede delivery, and separate time windows apply to both.
+Extended from VRPTW to PDVRPTW — each order has both a pickup and delivery location, pickup must precede delivery, and separate time windows apply to both.
 
 **Architecture:**
 - **Warm start** — OR-Tools pre-solver generates a feasible initial solution; falls back to time-window sorted greedy insertion if no cache exists
-- **ALNS loop** — destroy/repair operators modify the route at each iteration; Simulated Annealing decides acceptance
+- **ALNS loop** — destroy/repair operators modify the route; Simulated Annealing decides acceptance
 - **PPO agent** — a 3-layer MLP (512 → 256 → 128) observes a 17-dimensional state vector and selects one of 15 destroy-repair operator pairs
 
 **Operators:**
@@ -67,11 +83,47 @@ with α=1.0, β=1.0, γ=2.5, clipped to [−10, 10]
 
 ### XGBoost Price Predictor
 
-Predicts base price (auction ceiling) and per-courier breakeven price using:
+Predicts auction base price and per-transporter breakeven price using:
 - 100 sequential decision trees, max depth 4
 - Learning rate 0.05, 80% subsample per round
 - Early stopping after 30 rounds without improvement
+- **R² > 0.95** on test set
 - Key features: distance, vehicle type, fuel efficiency, weight, volume, time window, weather, area type
+
+### Node Proximity Index (NPI)
+
+A spatiotemporal filtering algorithm that shortlists transporters by intersecting vehicles passing through source and destination districts within the shipment time window — before applying the heavier PPO-ALNS optimization.
+
+### Composite Bid Scoring
+
+```
+Score = [0.70 × Price + 0.20 × Rating + 0.10 × Performance] × (1 + AgingBoost)
+```
+
+Aging boost prevents transporter starvation — transporters who consistently lose due to rating gap receive a progressive score boost.
+
+---
+
+## Tech Stack
+
+**Frontend**
+- React (Vite), Tailwind CSS
+- Socket.io-client (real-time bid updates)
+- react-leaflet + Leaflet.js (route maps, OpenStreetMap)
+- React Router, Axios
+
+**Backend**
+- Node.js + Express, MongoDB + Mongoose
+- JWT (role-based auth: customer / transporter)
+- Socket.io (WebSocket auction rooms per shipment)
+- Razorpay (payments with HMAC-SHA256 verification)
+- Multer (shipment document uploads)
+
+**ML Microservice**
+- FastAPI + Uvicorn
+- PPO-ALNS PDVRPTW model (NumPy, CPU)
+- OR-Tools (warm-start cache)
+- XGBoost, Stable-Baselines3, Gymnasium
 
 ---
 
@@ -110,9 +162,7 @@ vahansetu-ml/
 │       └── matrices/        # 600 CSV distance/time matrices
 │
 ├── notebooks/
-│   └── BasePrice_xgBoost.ipynb
-│
-├── outputs/
+│   ├── BasePrice_xgBoost.ipynb
 │   └── batch_summary.png    # PPO-ALNS training results
 │
 ├── .gitignore
@@ -124,10 +174,7 @@ vahansetu-ml/
 
 ## Results
 
-PPO-ALNS training over 40 batches shows consistent improvement:
-- Average reward improved from **6.44 → 8.51**
-- Improvement rate improved from **82.8% → 86.3%**
-- Deadline violations stabilised around **0.175 per episode**
+PPO-ALNS training shows consistent improvement across batches:
 
 ![PPO-ALNS Batch Training Summary](notebooks/batch_summary.png)
 
@@ -135,12 +182,12 @@ XGBoost price predictor achieves R² > 0.95 on the test set. Top feature importa
 
 ---
 
-## Setup
+## Setup (ML Core)
 
 **Requirements:** Python 3.10+
 
 ```bash
-git clone https://github.com/<your-username>/vahansetu-ml.git
+git clone https://github.com/Asad-Alim/vahansetu-ml.git
 cd vahansetu-ml
 pip install -r requirements.txt
 ```
@@ -187,4 +234,3 @@ Supervised by **Dr. Antriksh Goswami**, Assistant Professor, CSE, NIT Patna.
 ## Reference
 
 Wang et al. (2025). *Reinforcement Learning Guided Adaptive Large Neighborhood Search for Vehicle Routing Problem with Time Windows*. Journal of Combinatorial Optimization, 50:35.  
-Reference implementation: https://github.com/Kikujjy/ppo-alns
